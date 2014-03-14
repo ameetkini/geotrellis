@@ -72,6 +72,27 @@ object Ingest extends ArgMain[CommandArguments] with Logging {
 
   //var dumpDir: String = null
 
+  def print(prefix: String) = {
+    //Getting the runtime reference from system
+        val runtime = Runtime.getRuntime()
+        val mb = 1024 * 1024
+        println(prefix)
+        println("##### Heap utilization statistics [MB] #####");
+         
+        //Print used memory
+        println("Used Memory:"
+            + (runtime.totalMemory() - runtime.freeMemory()) / mb)
+ 
+        //Print free memory
+        println("Free Memory:"
+            + runtime.freeMemory() / mb)
+         
+        //Print total available memory
+        println("Total Memory:" + runtime.totalMemory() / mb)
+ 
+        //Print Maximum available memory
+        println("Max Memory:" + runtime.maxMemory() / mb)
+  }
   def main(args: CommandArguments) {
     val inPath = new Path(args.input)
     val outPath = new Path(args.output)
@@ -82,6 +103,8 @@ object Ingest extends ArgMain[CommandArguments] with Logging {
     dir.delete()
     dir.mkdirs()*/
 
+    print("Before everything: -------------------------")
+    
     val conf = SparkUtils.createHadoopConfiguration
 
     val (files, meta) = PyramidMetadata.fromTifFiles(inPath, conf)
@@ -160,7 +183,11 @@ object Ingest extends ArgMain[CommandArguments] with Logging {
         imgMeta.bounds.getUpperCorner.getOrdinate(0),
         imgMeta.bounds.getUpperCorner.getOrdinate(1))
       val re = RasterExtent(extent, pixelWidth, pixelHeight)
+          print("Before getDataBuffer: -------------------------")
+
       val rawDataBuff = image.getRenderedImage().getData().getDataBuffer()
+          print("After getDataBuffer: -------------------------")
+
       val rd = rasterType match {
         case TypeDouble => RasterData(rawDataBuff.asInstanceOf[DataBufferDouble].getData(), tileSize, tileSize)
         case TypeFloat  => RasterData(rawDataBuff.asInstanceOf[DataBufferFloat].getData(), tileSize, tileSize)
@@ -170,6 +197,8 @@ object Ingest extends ArgMain[CommandArguments] with Logging {
         case _          => sys.error("Unrecognized AWT type - " + rasterType)
       }
       val trd = NoDataHandler.removeUserNoData(rd, nodata)
+          print("After removeUserNoData: -------------------------")
+
       Raster(trd, re)
     }
 
@@ -193,8 +222,10 @@ object Ingest extends ArgMain[CommandArguments] with Logging {
     val imageMeta = GeoTiff.getMetadata(url).get
     val (zoom, tileSize, rasterType, nodata) =
       (pyMeta.maxZoomLevel, pyMeta.tileSize, pyMeta.rasterType, pyMeta.nodata)
+    print("Before warp: -------------------------")
 
     val raster = warp(image, imageMeta, pyMeta)
+    print("after warp: -------------------------")
 
     val tileExtent = pyMeta.metadataForBaseZoom.tileExtent
     val tiles = for {
@@ -207,6 +238,7 @@ object Ingest extends ArgMain[CommandArguments] with Logging {
       // CroppedRaster's translation from Extent to gridBounds ends up giving us an extra row/col
       cropRaster = CroppedRaster(cropRasterTmp, GridBounds(0, 0, tileSize - 1, tileSize - 1))
     } yield (tileId, cropRaster)
+    print("after tiling: -------------------------")
 
     /* debugging stuff 
      
